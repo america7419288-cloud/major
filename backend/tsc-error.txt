@@ -1,0 +1,2 @@
+src/controllers/workspace.controller.ts(62,22): error TS2322: Type 'string | string[]' is not assignable to type 'string | StringFilter<"Workspace"> | undefined'.
+  Type 'string[]' is not assignable to type 'string | StringFilter<"Workspace"> | undefined'.

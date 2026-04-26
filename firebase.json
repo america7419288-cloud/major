@@ -1,0 +1,11 @@
+{
+  "auth": {
+    "providers": {
+      "emailPassword": true,
+      "googleSignIn": {
+        "oAuthBrandDisplayName": "JSMentor AI",
+        "supportEmail": "america7419288@gmail.com"
+      }
+    }
+  }
+}

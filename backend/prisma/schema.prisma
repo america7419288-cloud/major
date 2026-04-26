@@ -1,0 +1,287 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  engineType = "library"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id             String            @id @default(uuid())
+  name           String
+  email          String            @unique
+  password       String?
+  avatar         String?
+  bio            String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  
+  workspaces     Workspace[]       @relation("WorkspaceOwner")
+  memberships    WorkspaceMember[]
+  pagesCreated   Page[]            @relation("PageCreator")
+  pagesUpdated   Page[]            @relation("PageUpdater")
+  tasksAssigned  Task[]            @relation("TaskAssignee")
+  tasksCreated   Task[]            @relation("TaskCreator")
+  comments       Comment[]
+  notifications  Notification[]
+  activities     Activity[]
+  pageVersions   PageVersion[]
+  pagePermissions PagePermission[] @relation("UserPagePermissions")
+  permissionsGranted PagePermission[] @relation("GrantedPermissions")
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+model Workspace {
+  id          String            @id @default(uuid())
+  name        String
+  icon        String?
+  description String?
+  ownerId     String
+  owner       User              @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  members     WorkspaceMember[]
+  pages       Page[]
+  tasks       Task[]
+  databases   Database[]
+}
+
+model WorkspaceMember {
+  id          String    @id @default(uuid())
+  userId      String
+  workspaceId String
+  role        Role      @default(MEMBER)
+  joinedAt    DateTime  @default(now())
+
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workspaceId])
+}
+
+model Page {
+  id          String   @id @default(uuid())
+  workspaceId String
+  parentId    String?
+  title       String
+  icon        String?
+  coverImage  String?
+  content     Json     @default("[]") // BlockContent[]
+  createdById String
+  updatedById String?
+  position    Float
+  isFavorite  Boolean  @default(false)
+  fontStyle   String   @default("default")
+  isFullWidth Boolean  @default(false)
+  isSmallText Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  parent      Page?     @relation("PageHierarchy", fields: [parentId], references: [id])
+  children    Page[]    @relation("PageHierarchy")
+  creator     User      @relation("PageCreator", fields: [createdById], references: [id])
+  updater     User?     @relation("PageUpdater", fields: [updatedById], references: [id])
+  tasks       Task[]
+  databases   Database[] // Databases that belong to this page
+  versions    PageVersion[]
+  permissions PagePermission[]
+  isPublic    Boolean          @default(false)
+  publicPermission PermissionLevel @default(CAN_VIEW)
+}
+
+model PageVersion {
+  id        String   @id @default(uuid())
+  
+  pageId    String
+  page      Page     @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  
+  content   Json     // Tiptap JSON snapshot
+  title     String
+  
+  createdById String
+  createdBy   User   @relation(fields: [createdById], references: [id])
+  
+  changeDescription String? // Auto-generated
+  
+  createdAt DateTime @default(now())
+  
+  @@index([pageId, createdAt])
+}
+
+enum PermissionLevel {
+  FULL_ACCESS
+  CAN_EDIT
+  CAN_COMMENT
+  CAN_VIEW
+}
+
+model PagePermission {
+  id      String          @id @default(uuid())
+  
+  pageId  String
+  page    Page            @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  
+  userId  String?
+  user    User?           @relation("UserPagePermissions", fields: [userId], references: [id], onDelete: Cascade)
+  
+  level   PermissionLevel
+  
+  grantedById String
+  grantedBy   User    @relation("GrantedPermissions", fields: [grantedById], references: [id])
+  
+  createdAt DateTime @default(now())
+  
+  @@unique([pageId, userId])
+  @@index([userId])
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  REVIEW
+  DONE
+  CANCELLED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+model Task {
+  id              String     @id @default(uuid())
+  workspaceId     String
+  pageId          String?
+  parentId        String?
+  title           String
+  description     Json?      // BlockContent[]
+  status          TaskStatus @default(TODO)
+  progress        Float      @default(0)
+  dueDate         DateTime?
+  startDate       DateTime?
+  completedAt     DateTime?
+  priority        Priority   @default(MEDIUM)
+  tags            String?
+  position        Float
+  assigneeId      String?
+  createdById     String
+  estimatedTime   Int?       // in minutes
+  trackedTime     Int        @default(0) // in minutes
+  recurringPattern String?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  deletedAt       DateTime?
+
+  workspace       Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  page            Page?      @relation(fields: [pageId], references: [id])
+  parent          Task?      @relation("TaskHierarchy", fields: [parentId], references: [id])
+  subtasks        Task[]     @relation("TaskHierarchy")
+  assignee        User?      @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  creator         User       @relation("TaskCreator", fields: [createdById], references: [id])
+}
+
+model Database {
+  id          String         @id @default(uuid())
+  workspaceId String
+  pageId      String?        // A database can be inline in a page or its own full page
+  name        String
+  icon        String?
+  description String?
+  schema      Json           // PropertyDef[]
+  views       DatabaseView[]
+  items       DatabaseItem[]
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  workspace   Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  page        Page?          @relation(fields: [pageId], references: [id], onDelete: Cascade)
+}
+
+model DatabaseItem {
+  id          String   @id @default(uuid())
+  databaseId  String
+  properties  Json     // Record<string, any>
+  position    Float
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  database    Database @relation(fields: [databaseId], references: [id], onDelete: Cascade)
+}
+
+enum ViewType {
+  TABLE
+  BOARD
+  LIST
+  CALENDAR
+  TIMELINE
+  GALLERY
+}
+
+model DatabaseView {
+  id          String   @id @default(uuid())
+  databaseId  String
+  name        String
+  type        ViewType @default(TABLE)
+  config      Json     // ViewConfig
+  position    Float
+  
+  database    Database @relation(fields: [databaseId], references: [id], onDelete: Cascade)
+}
+
+model Comment {
+  id          String    @id @default(uuid())
+  userId      String
+  entityType  String    // e.g., "PAGE", "BLOCK", "TASK", "ITEM"
+  entityId    String
+  content     String
+  anchorText  String?
+  blockSnapshot Json?
+  resolvedAt  DateTime?
+  parentId    String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent      Comment?  @relation("CommentReplies", fields: [parentId], references: [id])
+  replies     Comment[] @relation("CommentReplies")
+}
+
+model Notification {
+  id          String   @id @default(uuid())
+  userId      String
+  type        String   // e.g., "COMMENT", "MENTION", "ASSIGNMENT"
+  title       String
+  content     String
+  link        String?
+  isRead      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Activity {
+  id          String   @id @default(uuid())
+  userId      String
+  entityType  String    // e.g., "TASK", "PAGE"
+  entityId    String
+  action      String    // e.g., "created", "status_changed"
+  details     Json?     // { from: "TODO", to: "DONE" }
+  createdAt   DateTime @default(now())
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
